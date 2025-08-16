@@ -1,4 +1,14 @@
 # speech_pipeline_manager.py
+import multiprocessing
+
+# Fix CUDA/GPU multiprocessing issues - set spawn method early
+try:
+    if multiprocessing.get_start_method(allow_none=True) is None:
+        multiprocessing.set_start_method('spawn')
+        print("🚦 Set multiprocessing start method to 'spawn' from speech_pipeline_manager")
+except (RuntimeError, AttributeError):
+    pass  # Already set or not supported
+
 from typing import Optional, Callable
 import threading
 import logging
@@ -123,7 +133,7 @@ class SpeechPipelineManager:
             self,
             tts_engine: str = "kokoro",
             llm_provider: str = "ollama",
-            llm_model: str = "hf.co/bartowski/huihui-ai_Mistral-Small-24B-Instruct-2501-abliterated-GGUF:Q4_K_M",
+            llm_model: str = "llama3:8b-instruct-q4_K_M",
             no_think: bool = False,
             orpheus_model: str = "orpheus-3b-0.1-ft-Q8_0-GGUF/orpheus-3b-0.1-ft-q8_0.gguf",
         ):
@@ -169,7 +179,10 @@ class SpeechPipelineManager:
         )
         self.llm.prewarm()
         self.llm_inference_time = self.llm.measure_inference_time()
-        logger.debug(f"🗣️🧠🕒 LLM inference time: {self.llm_inference_time:.2f}ms")
+        if self.llm_inference_time is not None:
+            logger.debug(f"🗣️🧠🕒 LLM inference time: {self.llm_inference_time:.2f}ms")
+        else:
+            logger.error("🗣️🧠💥 Failed to measure LLM inference time - backend connection failed")
 
         # --- State ---
         self.history = []
@@ -210,6 +223,11 @@ class SpeechPipelineManager:
         self.tts_final_inference_thread.start()
 
         self.on_partial_assistant_text: Optional[Callable[[str], None]] = None
+
+        # Handle case where LLM inference time measurement failed
+        if self.llm_inference_time is None:
+            logger.warning("🗣️🧠⚠️ LLM inference time measurement failed, using default value of 1000ms")
+            self.llm_inference_time = 1000.0  # Default fallback value in milliseconds
 
         self.full_output_pipeline_latency = self.llm_inference_time + self.audio.tts_inference_time
         logger.info(f"🗣️⏱️ Full output pipeline latency: {self.full_output_pipeline_latency:.2f}ms (LLM: {self.llm_inference_time:.2f}ms, TTS: {self.audio.tts_inference_time:.2f}ms)")

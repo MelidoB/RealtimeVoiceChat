@@ -1,4 +1,14 @@
+import multiprocessing
 import logging
+
+# Fix CUDA/GPU multiprocessing issues - set spawn method early if not already set
+try:
+    if multiprocessing.get_start_method(allow_none=True) is None:
+        multiprocessing.set_start_method('spawn')
+        print("🚦 Set multiprocessing start method to 'spawn' from transcribe.py")
+except (RuntimeError, AttributeError):
+    pass  # Already set or not supported
+
 logger = logging.getLogger(__name__)
 
 from turndetect import strip_ending_punctuation
@@ -240,6 +250,8 @@ class TranscriptionProcessor:
         """
         def monitor():
             hot = False
+            potential_end_triggered = False  # Flag to prevent duplicate triggering
+            tts_allowance_triggered = False  # Flag to prevent duplicate TTS allowance calls
             # Initialize silence_time using the abstracted getter
             self.silence_time = self._get_recorder_param("speech_end_silence_start", 0.0)
 
@@ -275,17 +287,19 @@ class TranscriptionProcessor:
 
                     # --- Trigger Actions Based on Timing ---
 
-                    # 1. Force potential sentence end detection if time has passed
-                    if time_since_silence > potential_sentence_end_time:
+                    # 1. Force potential sentence end detection if time has passed (ONLY ONCE)
+                    if time_since_silence > potential_sentence_end_time and not potential_end_triggered:
+                        potential_end_triggered = True  # Set flag to prevent retriggering
                         # Check if realtime_text exists before logging/detecting
                         current_text = self.realtime_text if self.realtime_text else ""
                         logger.info(f"👂🔚 {Colors.YELLOW}Potential sentence end detected (timed out){Colors.RESET}: {current_text}")
                         # Use force_yield=True because this is triggered by timeout, not punctuation detection
                         self.detect_potential_sentence_end(current_text, force_yield=True, force_ellipses=True) # Force ellipses if timeout occurs
 
-                    # 2. Allow TTS synthesis shortly before the final silence duration elapses
+                    # 2. Allow TTS synthesis shortly before the final silence duration elapses (ONLY ONCE)
                     tts_allowance_time = silence_waiting_time - self._TTS_ALLOWANCE_OFFSET_S
-                    if time_since_silence > tts_allowance_time:
+                    if time_since_silence > tts_allowance_time and not tts_allowance_triggered:
+                        tts_allowance_triggered = True  # Set flag to prevent retriggering
                         if self.on_tts_allowed_to_synthesize: # Check if callback exists
                             self.on_tts_allowed_to_synthesize()
 
@@ -311,6 +325,13 @@ class TranscriptionProcessor:
                          if self.potential_full_transcription_abort_callback:
                              self.potential_full_transcription_abort_callback()
                     hot = False
+                    # Reset flags when silence period ends (new speech detected)
+                    potential_end_triggered = False
+                    tts_allowance_triggered = False
+                else:
+                    # Reset flags when not in silence period (ensures clean state for next silence)
+                    potential_end_triggered = False
+                    tts_allowance_triggered = False
 
                 time.sleep(0.001) # Short sleep to prevent busy-waiting dominating CPU
 

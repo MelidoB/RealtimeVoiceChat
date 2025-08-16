@@ -2,9 +2,18 @@
 services:
   # Your FastAPI Application Service
   app:
-    build: . # Build the image using the SIMPLIFIED Dockerfile
+    build: 
+      context: .
+      dockerfile: Dockerfile
+      args:
+        BUILDKIT_INLINE_CACHE: 1
+        MAKEFLAGS: "-j$(nproc)"  # Use all CPU cores for building
     image: realtime-voice-chat:latest # Name the image built by 'build:'
     container_name: realtime-voice-chat-app
+    shm_size: 2gb  # Increase shared memory for faster compilation
+    ulimits:
+      memlock: -1  # Remove memory lock limits for faster builds
+      stack: 67108864  # Increase stack size for compilation
     ports:
       - "8000:8000"
     environment:
@@ -17,9 +26,16 @@ services:
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
       - HF_HOME=/home/appuser/.cache/huggingface
       - TORCH_HOME=/home/appuser/.cache/torch
+      # RTX 4060 Performance Optimizations
+      - TORCH_CUDA_ARCH_LIST=8.9
+      - CUDA_LAUNCH_BLOCKING=0
+      - PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:128
+      - TORCH_BACKENDS_CUDNN_BENCHMARK=1
+      - TTS_BATCH_SIZE=4
+      - TTS_GPU_MEMORY_FRACTION=0.8
     volumes:
        # Optional: Mount code for live development
-       # - ./code:/app/code
+       - ./code:/app/code
        # Mount cache directories
        - huggingface_cache:/home/appuser/.cache/huggingface
        - torch_cache:/home/appuser/.cache/torch
@@ -47,6 +63,7 @@ services:
     environment:
       - NVIDIA_VISIBLE_DEVICES=all # Make GPUs visible inside container
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - CUDA_VISIBLE_DEVICES=0  # Explicitly set GPU 0
       # OLLAMA_MODELS might be useful if needed, points inside volume
       # - OLLAMA_MODELS=/root/.ollama/models
     deploy: # GPU access for Ollama Service

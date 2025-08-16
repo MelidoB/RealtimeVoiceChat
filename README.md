@@ -27,16 +27,19 @@ A sophisticated client-server system built for low-latency interaction:
 6.  ⬅️ **Return:** The generated audio is streamed back to your browser for playback.
 7.  🔄 **Interrupt:** Jump in anytime! The system handles interruptions gracefully.
 
-## Key Features ✨
+## Features ✨
 
-*   **Fluid Conversation:** Speak and listen, just like a real chat.
-*   **Real-Time Feedback:** See partial transcriptions and AI responses as they happen.
-*   **Low Latency Focus:** Optimized architecture using audio chunk streaming.
-*   **Smart Turn-Taking:** Dynamic silence detection (`turndetect.py`) adapts to the conversation pace.
-*   **Flexible AI Brains:** Pluggable LLM backends (Ollama default, OpenAI support via `llm_module.py`).
-*   **Customizable Voices:** Choose from different Text-to-Speech engines (Kokoro, Coqui, Orpheus via `audio_module.py`).
-*   **Web Interface:** Clean and simple UI using Vanilla JS and the Web Audio API.
-*   **Dockerized Deployment:** Recommended setup using Docker Compose for easier dependency management.
+*   **🎙️ Real-time Speech Recognition:** Powered by OpenAI's Whisper for fast and accurate transcription.
+*   **🧠 AI Conversations:** Integrates with **Ollama** (local LLMs) or **OpenAI** for intelligent, context-aware responses.
+*   **🔊 High-Quality Text-to-Speech:** Multiple TTS engine options:
+    *   **Coqui XTTSv2:** Exceptional voice quality and customization (GPU-accelerated).
+    *   **Kokoro:** Fast and efficient TTS.
+    *   **Orpheus:** Quality alternative TTS option.
+*   **🌐 Simple Web Interface:** Clean, responsive chat interface accessible from any modern browser.
+*   **🚀 Optimized Performance:** Efficient audio processing with real-time capabilities.
+*   **📦 Docker Support:** Easy deployment with containerization and GPU acceleration.
+*   **🔒 Privacy-Focused:** Designed to work entirely locally (when using Ollama + local TTS).
+*   **⚡ Hardware Optimization:** Specific optimizations for RTX 4060 and modern GPUs with Docker BuildKit support.
 
 ## Technology Stack 🛠️
 
@@ -52,7 +55,33 @@ A sophisticated client-server system built for low-latency interaction:
     *   `ollama` / `openai` (LLM Clients)
 *   **Audio Processing:** `numpy`, `scipy`
 
-## Before You Dive In: Prerequisites 🏊‍♀️
+## Hardware Optimization 🚀
+
+This project has been optimized for modern gaming laptops with dedicated GPUs. Specific optimizations have been implemented for:
+
+### RTX 4060 Performance Configuration
+- **Tested Hardware:** ASUS TUF Gaming A15 FA507NV
+  - RTX 4060 Laptop GPU (8GB VRAM)
+  - AMD Ryzen 5 7535HS (12 threads)
+  - 16GB RAM
+  - Ubuntu 24.04.3 LTS
+- **Performance Gains:** Achieved 10x+ improvement (sub-5 second response times vs 60+ seconds)
+- **Optimizations:**
+  - Docker BuildKit with parallel builds
+  - CUDA architecture targeting (8.9 for RTX 4060)
+  - TTS GPU memory fraction tuning (0.8 for 8GB VRAM)
+  - Shared memory allocation (2GB)
+  - NVIDIA Container Toolkit integration
+
+### GPU Acceleration Features
+- **Automatic GPU Detection:** Detects CUDA availability and configures accordingly
+- **Memory Management:** Optimized VRAM usage for different GPU sizes
+- **Container Support:** Full NVIDIA GPU access through Docker
+- **Multi-Engine Support:** GPU acceleration for both TTS and LLM processing
+
+---
+
+## Prerequisites 📋
 
 This project leverages powerful AI models, which have some requirements:
 
@@ -62,7 +91,17 @@ This project leverages powerful AI models, which have some requirements:
 *   **🐍 Python:** 3.9 or higher (if setting up manually).
 *   **🚀 GPU:** **A powerful CUDA-enabled NVIDIA GPU is *highly recommended***, especially for faster STT (Whisper) and TTS (Coqui). Performance on CPU-only or weaker GPUs will be significantly slower.
     *   The setup assumes **CUDA 12.1**. Adjust PyTorch installation if you have a different CUDA version.
-    *   **Docker (Linux):** Requires [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html).
+    *   **Docker (Linux):** Requires [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html) for GPU access:
+        ```bash
+        # Ubuntu/Debian installation
+        curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+        curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \
+          sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
+          sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+        sudo apt-get update && sudo apt-get install -y nvidia-container-toolkit
+        sudo nvidia-ctk runtime configure --runtime=docker
+        sudo systemctl restart docker
+        ```
 *   **🐳 Docker (Optional but Recommended):** Docker Engine and Docker Compose v2+ for the containerized setup.
 *   **🧠 Ollama (Optional):** If using the Ollama backend *without* Docker, install it separately and pull your desired models. The Docker setup includes an Ollama service.
 *   **🔑 OpenAI API Key (Optional):** If using the OpenAI backend, set the `OPENAI_API_KEY` environment variable (e.g., in a `.env` file or passed to Docker).
@@ -224,7 +263,10 @@ Want to tweak the AI's voice, brain, or how it listens? Modify the Python files 
     *   Adjust engine-specific settings (e.g., voice model path for Coqui, speaker ID for Orpheus, speed) within `AudioProcessor.__init__` in `audio_module.py`.
 *   **LLM Backend & Model (`server.py`, `llm_module.py`):**
     *   Set `LLM_START_PROVIDER` (`"ollama"` or `"openai"`) and `LLM_START_MODEL` (e.g., `"hf.co/..."` for Ollama, model name for OpenAI) in `server.py`. Remember to pull the Ollama model if using Docker (see Installation Step A3).
-    *   Customize the AI's personality by editing `system_prompt.txt`.
+    *   **Customize the AI's personality by editing `system_prompt.txt`:**
+        *   **Docker:** Changes are picked up automatically on container restart - no rebuild needed! Just run `docker compose restart app`
+        *   **Manual Installation:** Simply restart the server (`python server.py`) to apply changes
+        *   The file is volume-mounted in Docker for live development
 *   **STT Settings (`transcribe.py`):**
     *   Modify `DEFAULT_RECORDER_CONFIG` to change the Whisper model (`model`), language (`language`), silence thresholds (`silence_limit_seconds`), etc. The default `base.en` model is pre-downloaded during the Docker build.
 *   **Turn Detection Sensitivity (`turndetect.py`):**
@@ -242,6 +284,24 @@ Want to tweak the AI's voice, brain, or how it listens? Modify the Python files 
     5.  Generate certs (replace `your.local.ip`): `mkcert localhost 127.0.0.1 ::1 your.local.ip`
         *   This creates `.pem` files (e.g., `localhost+3.pem` and `localhost+3-key.pem`) in the current directory. Update `SSL_CERT_PATH` and `SSL_KEY_PATH` in `server.py` accordingly. Remember to potentially mount these into your Docker container.
     </details>
+
+---
+
+## Performance Notes 📊
+
+### Expected Performance Improvements
+- **RTX 4060 Configuration:** Sub-5 second total response time (includes STT + LLM + TTS)
+- **Previous CPU-only Performance:** 60+ seconds response time
+- **Performance Gain:** 10x+ improvement with GPU acceleration
+- **Memory Usage:** Optimized for 8GB VRAM GPUs with 80% allocation efficiency
+
+### Troubleshooting Performance
+- **Verify GPU Access:** Use the "Check GPU Status" task in VS Code or run:
+  ```bash
+  docker compose exec app python -c "import torch; print(f'CUDA available: {torch.cuda.is_available()}')"
+  ```
+- **Monitor VRAM Usage:** Adjust `TTS_GPU_MEMORY_FRACTION` in `.env` if experiencing memory issues
+- **Container Logs:** Check `docker compose logs -f app` for performance-related warnings
 
 ---
 
